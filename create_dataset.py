@@ -9,15 +9,16 @@ Processed table with corrected grammar and extra info is available at
 https://docs.google.com/spreadsheets/d/1a4Ntiwa1DLkpfAGDDrKvyyB4QA4xkKhQpD9kKx-DRck
 """
 
-import pandas as pd
-import openai
 import os
+import openai
+import argparse
+import pandas as pd
 
 openai.api_key = os.environ['OPENAI_API_KEY']
 
 
-def generate_response(user_prompt,
-                      system_prompt,
+def generate_response(system_prompt,
+                      user_prompt,
                       model='gpt-3.5-turbo-0613',
                       temperature=0,
                       **kwargs):
@@ -33,9 +34,24 @@ def generate_response(user_prompt,
 
 if __name__ == '__main__':
 
-    prompt_file = 'baseline'
-    num_messages = 10
+    # parse the configs
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--prompt',
+                        default='baseline',
+                        help='name of the prompt file in "./inputs/"')
+    parser.add_argument('-n', '--num',
+                        default=10,
+                        help='number of messages to generate for each BCT')
 
+    # read the inputs
+    args = parser.parse_args()
+    prompts = args.prompt
+    num_messages = int(args.num)
+
+    # read the prompt
+    with open(f'./inputs/{prompts}.txt') as prompt:
+        system_prompt, user_prompt = prompt.read().splitlines()
+    print(f'System prompt: {system_prompt}\n\nUser prompt: {user_prompt}\n')
 
     # read the BCT taxonomy
     BCT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS1NRUf8'\
@@ -43,15 +59,9 @@ if __name__ == '__main__':
               'ASrU_cBtO7Omj9Q/pub?gid=970379036&single=true&output=csv'
     bcts = pd.read_csv(BCT_URL)
 
-    # read the prompt
-    with open(f'./inputs/{prompt_file}.txt') as prompt:
-        system_prompt, prompt = prompt.read().splitlines()
-    print(f'System prompt: {system_prompt}\n\nUser prompt: {prompt}\n')
-
-
     # generate the dataset
-    print(f'Generating dataset "{prompt_file}" with {num_messages} messages for each BCT...\n')
-    os.makedirs(f'./data/{prompt_file}/', exist_ok=True)
+    print(f'Generating dataset "{prompts}" with {num_messages} messages for each BCT...\n')
+    os.makedirs(f'./data/{prompts}/', exist_ok=True)
     for i in range(9):
 
         # customize prompt for the current BCT
@@ -78,8 +88,8 @@ if __name__ == '__main__':
             else:
                 # save generated messages and display the first 5
                 bct_df = pd.DataFrame(bct_messages)
-                bct_df.to_csv(f'./data/{prompt_file}/{bct_no}.csv', header=False, index=False)
+                bct_df.to_csv(f'./data/{prompts}/{bct_no}.csv', header=False, index=False)
                 print(*[f'{i+1}. {m}' for i, m in enumerate(bct_messages[:5])], sep='\n')
 
-    print(f'\n\nDataset {prompt_file} is generated and saved to "./data/{prompt_file}/"')
+    print(f'\n\nDataset {prompts} is generated and saved to "./data/{prompts}/"')
 
