@@ -72,7 +72,7 @@ if __name__ == '__main__':
 
         # generate and save messages
         print(f'\n[{bct_no}] {bct_prompt}')
-        response = generate_response(bct_prompt, system_prompt)
+        response = generate_response(system_prompt, bct_prompt)
 
         # interrupt if the generation did not run as expected
         if response.choices[0].finish_reason != 'stop':
