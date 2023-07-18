@@ -17,46 +17,69 @@ openai.api_key = os.environ['OPENAI_API_KEY']
 
 
 def generate_response(user_prompt,
-                      system_prompt='You are a helpful assistant.',
+                      system_prompt,
                       model='gpt-3.5-turbo-0613',
-                      temperature=0):
+                      temperature=0,
+                      **kwargs):
     """Submit user prompt to GPT model and return the response"""
     messages = [{'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_prompt}]
     response = openai.ChatCompletion.create(messages=messages,
                                             model=model,
-                                            temperature=temperature)
-    return response.choices[0].message.content
-
+                                            temperature=temperature,
+                                            **kwargs)
+    return response
 
 
 if __name__ == '__main__':
 
-    prompt_file = 'baseline.txt'
-    num_messages = 5
+    prompt_file = 'baseline'
+    num_messages = 10
 
 
-    # read BCT taxonomy
+    # read the BCT taxonomy
     BCT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS1NRUf8'\
               'ZMAowUBBqq69awHkuDY1ZQIQord5rbFlhHr8dcJUaQqQImEMJnhuwKtu'\
               'ASrU_cBtO7Omj9Q/pub?gid=970379036&single=true&output=csv'
     bcts = pd.read_csv(BCT_URL)
 
     # read the prompt
-    with open(f'./inputs/{prompt_file}') as prompt:
-        prompt = prompt.read().splitlines()[0]
+    with open(f'./inputs/{prompt_file}.txt') as prompt:
+        system_prompt, prompt = prompt.read().splitlines()
+    print(f'System prompt: {system_prompt}\n\nUser prompt: {prompt}\n')
 
 
-    # generate dataset
+    # generate the dataset
+    print(f'Generating dataset "{prompt_file}" with {num_messages} messages for each BCT...\n')
+    os.makedirs(f'./data/{prompt_file}/', exist_ok=True)
     for i in range(9):
+
+        # customize prompt for the current BCT
+        bct_no = bcts.No[i]
         bct_prompt = prompt.replace('{bct_label}', bcts.Label[i])\
                            .replace('{bct_definition}', bcts.Definition[i])\
                            .replace('{num_messages}', str(num_messages))
-        print(f'\n{i+1}. {bct_prompt}')
-        print(generate_response(bct_prompt))
 
+        # generate and save messages
+        print(f'\n[{bct_no}] {bct_prompt}')
+        response = generate_response(bct_prompt, system_prompt)
 
+        # interrupt if the generation did not run as expected
+        if response.choices[0].finish_reason != 'stop':
+            raise ValueError(f'\nCould not generate messages for '\
+                           + f'BCT {bct_no} at index {i}:\n{response}')
+        else:
+            bct_messages = response.choices[0].message.content.split('\n')
 
+            # ensure that the messages length/format is correct
+            if len(bct_messages) != num_messages:
+                raise ValueError(f'\nWrong format for messages generated for '\
+                               + f'BCT {bct_no} at index {i}:\n{bct_messages}')
+            else:
+                # save generated messages and display the first 5
+                bct_df = pd.DataFrame(bct_messages)
+                bct_df.to_csv(f'./data/{prompt_file}/{bct_no}.csv', header=False, index=False)
+                print(*[f'{i+1}. {m}' for i, m in enumerate(bct_messages[:5])], sep='\n')
 
-
+    print(f'\n\nDataset {prompt_file} is generated and saved to "./data/{prompt_file}/"')
 
