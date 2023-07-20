@@ -22,7 +22,7 @@ def generate_response(system_prompt,
                       model='gpt-3.5-turbo-0613',
                       temperature=0,
                       **kwargs):
-    """Submit user prompt to GPT model and return the response"""
+    """Submit user prompt to GPT model and return the response."""
     messages = [{'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_prompt}]
     response = openai.ChatCompletion.create(messages=messages,
@@ -31,6 +31,14 @@ def generate_response(system_prompt,
                                             **kwargs)
     return response
 
+def format_response(content):
+    """Format the model response as a list of strings."""
+    # split on new line symbols
+    messages = re.split('\n+', content)
+    # strip message numbering
+    messages = [message.lstrip('0123456789. ') for message in messages]
+    return messages
+
 
 if __name__ == '__main__':
 
@@ -38,7 +46,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--prompt',
                         default='baseline',
-                        help='name of the prompt file in "./inputs/"')
+                        help='name of the prompt file in "./prompts/"')
     parser.add_argument('-n', '--num',
                         default=10,
                         help='number of messages to generate for each BCT')
@@ -49,7 +57,7 @@ if __name__ == '__main__':
     num_messages = int(args.num)
 
     # read the prompt
-    with open(f'./inputs/{prompts}.txt') as prompt:
+    with open(f'./prompts/{prompts}.txt') as prompt:
         system_prompt, user_prompt = prompt.read().splitlines()
     print(f'System prompt: {system_prompt}\n\nUser prompt: {user_prompt}\n')
 
@@ -57,18 +65,18 @@ if __name__ == '__main__':
     BCT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS1NRUf8'\
               'ZMAowUBBqq69awHkuDY1ZQIQord5rbFlhHr8dcJUaQqQImEMJnhuwKtu'\
               'ASrU_cBtO7Omj9Q/pub?gid=970379036&single=true&output=csv'
-    bcts = pd.read_csv(BCT_URL)
+    bcts = pd.read_csv(BCT_URL, dtype=str)
 
     # generate the dataset
     print(f'Generating dataset "{prompts}" with {num_messages} messages for each BCT...\n')
     os.makedirs(f'./data/{prompts}/', exist_ok=True)
-    for i in range(9):
+    for i in range(len(bcts)):
 
         # customize prompt for the current BCT
         bct_no = bcts.No[i]
-        bct_prompt = prompt.replace('{bct_label}', bcts.Label[i])\
-                           .replace('{bct_definition}', bcts.Definition[i])\
-                           .replace('{num_messages}', str(num_messages))
+        bct_prompt = user_prompt.replace('{bct_label}', bcts.Label[i])\
+                                .replace('{bct_definition}', bcts.Definition[i])\
+                                .replace('{num_messages}', str(num_messages))
 
         # generate and save messages
         print(f'\n[{bct_no}] {bct_prompt}')
@@ -79,9 +87,8 @@ if __name__ == '__main__':
             raise ValueError(f'\nCould not generate messages for '\
                            + f'BCT {bct_no} at index {i}:\n{response}')
         else:
-            bct_messages = response.choices[0].message.content.split('\n')
-
-            # ensure that the messages length/format is correct
+            # check if the length/format of the messages is correct
+            bct_messages = format_response(response.choices[0].message.content)
             if len(bct_messages) != num_messages:
                 raise ValueError(f'\nWrong format for messages generated for '\
                                + f'BCT {bct_no} at index {i}:\n{bct_messages}')
