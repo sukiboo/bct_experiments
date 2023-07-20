@@ -10,6 +10,7 @@ https://docs.google.com/spreadsheets/d/1a4Ntiwa1DLkpfAGDDrKvyyB4QA4xkKhQpD9kKx-D
 """
 
 import os
+import re
 import openai
 import argparse
 import pandas as pd
