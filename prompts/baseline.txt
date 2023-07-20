@@ -1,0 +1,2 @@
+You are a helpful assistant. Your goal is to generate messages requested by the user. Messages should be delimited by the double quotation marks and returned as a numbered list.
+The behavioral change technique "{bct_label}" is defined as "{bct_definition}". Generate {num_messages} messages with this behavioral change technique that motivate a patient to schedule a health check-up appointment.
