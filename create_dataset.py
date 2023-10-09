@@ -14,6 +14,7 @@ import re
 import openai
 import argparse
 import pandas as pd
+from retry.api import retry_call
 
 openai.api_key = os.environ['OPENAI_API_KEY']
 
@@ -49,16 +50,10 @@ def generate_dataset(prompts, num_messages):
         system_prompt, user_prompt = prompt.read().splitlines()
     print(f'System prompt: {system_prompt}\n\nUser prompt: {user_prompt}\n')
 
-    # read the BCT taxonomy
-    BCT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS1NRUf8'\
-              'ZMAowUBBqq69awHkuDY1ZQIQord5rbFlhHr8dcJUaQqQImEMJnhuwKtu'\
-              'ASrU_cBtO7Omj9Q/pub?gid=970379036&single=true&output=csv'
-    bcts = pd.read_csv(BCT_URL, dtype=str)
-
     # generate the dataset
     print(f'Generating dataset "{prompts}" with {num_messages} messages for each BCT...\n')
     os.makedirs(f'./data/{prompts}/', exist_ok=True)
-    for ind in range(28, len(bcts)):
+    for ind in range(len(bcts)):
 
         # customize prompt for the current BCT
         bct_no = bcts.No[ind]
@@ -67,9 +62,13 @@ def generate_dataset(prompts, num_messages):
                                 .replace('{num_messages}', str(num_messages))
 
         # generate messages for the current BCT
-        generate_bct_messages(bct_no, bct_prompt, system_prompt)
+        retry_call(generate_bct_messages,
+                   fargs=(bct_no, bct_prompt, system_prompt),
+                   tries=3)
 
-    print(f'\n\nDataset "{prompts}" is generated and saved to "./data/{prompts}/"')
+    # merge and save the dataset
+    merge_dataset(prompts)
+    print(f'\n\nDataset "{prompts}" is generated and saved to "./data/{prompts}.csv"')
 
 def generate_bct_messages(bct_no, bct_prompt, system_prompt):
     """Generate a set of messages for a given BCT."""
@@ -91,6 +90,25 @@ def generate_bct_messages(bct_no, bct_prompt, system_prompt):
             bct_df.to_csv(f'./data/{prompts}/{bct_no}.csv', header=False, index=False)
             print(*[f'{i+1}. {m}' for i, m in enumerate(bct_messages[:5])], sep='\n')
 
+def merge_dataset(dataset_name):
+    """Merge separate message files into a single dataframe."""
+    dfs = []
+    for bct in bcts.No.tolist():
+        try:
+            # read messages for the current BCT
+            df = pd.read_csv(f'./data/{dataset_name}/{bct}.csv', names=['message'])
+            df['bct'] = bct
+            dfs.append(df)
+        except FileNotFoundError:
+            raise FileNotFoundError(f'\nThe file "./data/{dataset_name}/{bct}.csv" not found')
+        except:
+            raise OSError(f'\nCould not read the "./data/{dataset_name}/{bct}.csv" file')
+
+    # merge all messages and save the dataframe
+    df = pd.concat(dfs)
+    df.reset_index(drop=True, inplace=True)
+    df.to_csv(f'./data/{dataset_name}.csv')
+
 
 if __name__ == '__main__':
 
@@ -107,6 +125,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
     prompts = args.prompt
     num_messages = int(args.num)
+
+    # read the BCT taxonomy
+    BCT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS1NRUf8'\
+              'ZMAowUBBqq69awHkuDY1ZQIQord5rbFlhHr8dcJUaQqQImEMJnhuwKtu'\
+              'ASrU_cBtO7Omj9Q/pub?gid=970379036&single=true&output=csv'
+    bcts = pd.read_csv(BCT_URL, dtype=str)
 
     # generate the dataset
     generate_dataset(prompts, num_messages)
