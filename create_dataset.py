@@ -36,9 +36,60 @@ def format_response(content):
     """Format the model response as a list of strings."""
     # split on new line symbols
     messages = re.split('\n+', content)
+    # only keep lines that start with a number
+    messages = [message for message in messages if message[0].isdigit()]
     # strip message numbering
     messages = [message.lstrip('0123456789. ') for message in messages]
     return messages
+
+def generate_dataset(prompts, num_messages):
+    """Generate a dataset of messages from a given prompt."""
+    # read the prompt
+    with open(f'./prompts/{prompts}.txt') as prompt:
+        system_prompt, user_prompt = prompt.read().splitlines()
+    print(f'System prompt: {system_prompt}\n\nUser prompt: {user_prompt}\n')
+
+    # read the BCT taxonomy
+    BCT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS1NRUf8'\
+              'ZMAowUBBqq69awHkuDY1ZQIQord5rbFlhHr8dcJUaQqQImEMJnhuwKtu'\
+              'ASrU_cBtO7Omj9Q/pub?gid=970379036&single=true&output=csv'
+    bcts = pd.read_csv(BCT_URL, dtype=str)
+
+    # generate the dataset
+    print(f'Generating dataset "{prompts}" with {num_messages} messages for each BCT...\n')
+    os.makedirs(f'./data/{prompts}/', exist_ok=True)
+    for ind in range(28, len(bcts)):
+
+        # customize prompt for the current BCT
+        bct_no = bcts.No[ind]
+        bct_prompt = user_prompt.replace('{bct_label}', bcts.Label[ind])\
+                                .replace('{bct_definition}', bcts.Definition[ind])\
+                                .replace('{num_messages}', str(num_messages))
+
+        # generate messages for the current BCT
+        generate_bct_messages(bct_no, bct_prompt, system_prompt)
+
+    print(f'\n\nDataset "{prompts}" is generated and saved to "./data/{prompts}/"')
+
+def generate_bct_messages(bct_no, bct_prompt, system_prompt):
+    """Generate a set of messages for a given BCT."""
+    # generate and save messages
+    print(f'\n[{bct_no}] {bct_prompt}')
+    response = generate_response(system_prompt, bct_prompt)
+
+    # interrupt if the generation did not run as expected
+    if response.choices[0].finish_reason != 'stop':
+        raise ValueError(f'\nCould not generate messages for BCT {bct_no}:\n{response}')
+    else:
+        # check if the length/format of the messages is correct
+        bct_messages = format_response(response.choices[0].message.content)
+        if len(bct_messages) != num_messages:
+            raise ValueError(f'\nWrong format for BCT {bct_no} messages:\n{bct_messages}')
+        else:
+            # save generated messages and display the first 5
+            bct_df = pd.DataFrame(bct_messages)
+            bct_df.to_csv(f'./data/{prompts}/{bct_no}.csv', header=False, index=False)
+            print(*[f'{i+1}. {m}' for i, m in enumerate(bct_messages[:5])], sep='\n')
 
 
 if __name__ == '__main__':
@@ -57,47 +108,6 @@ if __name__ == '__main__':
     prompts = args.prompt
     num_messages = int(args.num)
 
-    # read the prompt
-    with open(f'./prompts/{prompts}.txt') as prompt:
-        system_prompt, user_prompt = prompt.read().splitlines()
-    print(f'System prompt: {system_prompt}\n\nUser prompt: {user_prompt}\n')
-
-    # read the BCT taxonomy
-    BCT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS1NRUf8'\
-              'ZMAowUBBqq69awHkuDY1ZQIQord5rbFlhHr8dcJUaQqQImEMJnhuwKtu'\
-              'ASrU_cBtO7Omj9Q/pub?gid=970379036&single=true&output=csv'
-    bcts = pd.read_csv(BCT_URL, dtype=str)
-
     # generate the dataset
-    print(f'Generating dataset "{prompts}" with {num_messages} messages for each BCT...\n')
-    os.makedirs(f'./data/{prompts}/', exist_ok=True)
-    for i in range(len(bcts)):
-
-        # customize prompt for the current BCT
-        bct_no = bcts.No[i]
-        bct_prompt = user_prompt.replace('{bct_label}', bcts.Label[i])\
-                                .replace('{bct_definition}', bcts.Definition[i])\
-                                .replace('{num_messages}', str(num_messages))
-
-        # generate and save messages
-        print(f'\n[{bct_no}] {bct_prompt}')
-        response = generate_response(system_prompt, bct_prompt)
-
-        # interrupt if the generation did not run as expected
-        if response.choices[0].finish_reason != 'stop':
-            raise ValueError(f'\nCould not generate messages for '\
-                           + f'BCT {bct_no} at index {i}:\n{response}')
-        else:
-            # check if the length/format of the messages is correct
-            bct_messages = format_response(response.choices[0].message.content)
-            if len(bct_messages) != num_messages:
-                raise ValueError(f'\nWrong format for messages generated for '\
-                               + f'BCT {bct_no} at index {i}:\n{bct_messages}')
-            else:
-                # save generated messages and display the first 5
-                bct_df = pd.DataFrame(bct_messages)
-                bct_df.to_csv(f'./data/{prompts}/{bct_no}.csv', header=False, index=False)
-                print(*[f'{i+1}. {m}' for i, m in enumerate(bct_messages[:5])], sep='\n')
-
-    print(f'\n\nDataset {prompts} is generated and saved to "./data/{prompts}/"')
+    generate_dataset(prompts, num_messages)
 
