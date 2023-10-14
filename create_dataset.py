@@ -33,44 +33,51 @@ def generate_response(system_prompt,
                                             **kwargs)
     return response
 
-def format_response(content):
-    """Format the model response as a list of strings."""
-    # split on new line symbols
-    messages = re.split('\n+', content)
-    # only keep lines that start with a number
-    messages = [message for message in messages if message[0].isdigit()]
-    # strip message numbering
-    messages = [message.lstrip('0123456789. ') for message in messages]
-    return messages
-
-def generate_dataset(prompts, num_messages):
+def generate_dataset(prompt_file, num_messages):
     """Generate a dataset of messages from a given prompt."""
     # read the prompt
-    with open(f'./prompts/{prompts}.txt') as prompt:
-        system_prompt, user_prompt = prompt.read().splitlines()
+    system_prompt, user_prompt = read_prompt(prompt_file)
     print(f'System prompt: {system_prompt}\n\nUser prompt: {user_prompt}\n')
 
     # generate the dataset
-    print(f'Generating dataset "{prompts}" with {num_messages} messages for each BCT...\n')
-    os.makedirs(f'./data/{prompts}/', exist_ok=True)
+    print(f'Generating dataset "{prompt_file}" with {num_messages} messages for each BCT...\n')
+    os.makedirs(f'./data/{prompt_file}/', exist_ok=True)
     for ind in range(len(bcts)):
 
-        # customize prompt for the current BCT
+        # customize prompts for the current BCT
         bct_no = bcts.No[ind]
+        sys_prompt = system_prompt.replace('{bct_label}', bcts.Label[ind])\
+                                  .replace('{num_messages}', str(num_messages))
         bct_prompt = user_prompt.replace('{bct_label}', bcts.Label[ind])\
                                 .replace('{bct_definition}', bcts.Definition[ind])\
+                                .replace('{bct_examples}', bcts.Examples[ind])\
                                 .replace('{num_messages}', str(num_messages))
 
         # generate messages for the current BCT
         retry_call(generate_bct_messages,
-                   fargs=(bct_no, bct_prompt, system_prompt),
+                   fargs=(bct_no, bct_prompt, sys_prompt, prompt_file),
                    tries=3)
 
     # merge and save the dataset
-    merge_dataset(prompts)
-    print(f'\n\nDataset "{prompts}" is generated and saved to "./data/{prompts}.csv"')
+    merge_dataset(prompt_file)
+    print(f'\n\nDataset "{prompt_file}" is generated and saved to "./data/{prompt_file}.csv"')
 
-def generate_bct_messages(bct_no, bct_prompt, system_prompt):
+def read_prompt(prompt_file):
+    """Read and parse the prompt from a given file."""
+    with open(f'./prompts/{prompt_file}.txt') as prompt:
+        try:
+            content = prompt.read()
+            # check if the prompt file contains the divider
+            if '=====' in content:
+                system_prompt, user_prompt = content.split('=====\n')
+            # otherwise assume that the prompt consists of two lines
+            else:
+                system_prompt, user_prompt = content.splitlines()
+            return system_prompt, user_prompt
+        except:
+            raise OSError(f'\nCould not parse the prompt from "./prompts/{prompt_file}.txt" file')
+
+def generate_bct_messages(bct_no, bct_prompt, system_prompt, prompt_file):
     """Generate a set of messages for a given BCT."""
     # generate and save messages
     print(f'\n[{bct_no}] {bct_prompt}')
@@ -80,15 +87,25 @@ def generate_bct_messages(bct_no, bct_prompt, system_prompt):
     if response.choices[0].finish_reason != 'stop':
         raise ValueError(f'\nCould not generate messages for BCT {bct_no}:\n{response}')
     else:
-        # check if the length/format of the messages is correct
-        bct_messages = format_response(response.choices[0].message.content)
-        if len(bct_messages) != num_messages:
-            raise ValueError(f'\nWrong format for BCT {bct_no} messages:\n{bct_messages}')
-        else:
-            # save generated messages and display the first 5
-            bct_df = pd.DataFrame(bct_messages)
-            bct_df.to_csv(f'./data/{prompts}/{bct_no}.csv', header=False, index=False)
-            print(*[f'{i+1}. {m}' for i, m in enumerate(bct_messages[:5])], sep='\n')
+        # format and save generated messages
+        bct_messages = format_response(response.choices[0].message.content, num_messages)
+        bct_df = pd.DataFrame(bct_messages)
+        bct_df.to_csv(f'./data/{prompt_file}/{bct_no}.csv', header=False, index=False)
+        print(*[f'{i+1}. {m}' for i, m in enumerate(bct_messages[:5])], sep='\n')
+
+def format_response(content, num_messages):
+    """Format the model response as a list of strings."""
+    # split on new line symbols
+    messages = re.split('\n+', content)
+    try:
+        # if more messages than required then only keep the lines that start with a number
+        if len(messages) > num_messages:
+            messages = [message for message in messages if message[0].isdigit()]
+        # strip message numbering
+        messages = [message.lstrip('0123456789. ') for message in messages]
+        return messages
+    except:
+        raise ValueError(f'\nWrong format for the generated messages:\n{content}')
 
 def merge_dataset(dataset_name):
     """Merge separate message files into a single dataframe."""
@@ -123,7 +140,7 @@ if __name__ == '__main__':
 
     # read the inputs
     args = parser.parse_args()
-    prompts = args.prompt
+    prompt_file = args.prompt
     num_messages = int(args.num)
 
     # read the BCT taxonomy
@@ -133,5 +150,5 @@ if __name__ == '__main__':
     bcts = pd.read_csv(BCT_URL, dtype=str)
 
     # generate the dataset
-    generate_dataset(prompts, num_messages)
+    generate_dataset(prompt_file, num_messages)
 
