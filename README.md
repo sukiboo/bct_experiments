@@ -6,8 +6,10 @@ Currently working with [BCT Taxonomy v1](https://digitalwellbeing.org/wp-content
 
 
 ## Dataset Generation
-A dataset of behavioral messages is generated from a prompt file in `./prompts/` directory.
-Currently a prompt file consists of two lines: system prompt and user prompt.
+A dataset of behavioral messages is generated from a prompt file in `./prompts/` directory.\
+A prompt file either
+- consists of two lines: system prompt and user prompt
+- or contain `=====` line, in which case everything above this line is the system prompt and everything below is the user prompt
 
 Use a prompt file `prompt_name.txt` to generate a dataset with `num` messages per BCT via the command
 ```
