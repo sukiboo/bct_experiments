@@ -69,7 +69,7 @@ def read_prompt(prompt_file):
             content = prompt.read()
             # check if the prompt file contains the divider
             if '=====' in content:
-                system_prompt, user_prompt = content.split('=====\n')
+                system_prompt, user_prompt = content.split('\n=====\n')
             # otherwise assume that the prompt consists of two lines
             else:
                 system_prompt, user_prompt = content.splitlines()
@@ -89,6 +89,8 @@ def generate_bct_messages(bct_no, bct_prompt, system_prompt, prompt_file):
     else:
         # format and save generated messages
         bct_messages = format_response(response.choices[0].message.content, num_messages)
+        if len(bct_messages) != num_messages:
+            raise ValueError(f'\nWrong number of messages generated:\n{bct_messages}')
         bct_df = pd.DataFrame(bct_messages)
         bct_df.to_csv(f'./data/{prompt_file}/{bct_no}.csv', header=False, index=False)
         print(*[f'{i+1}. {m}' for i, m in enumerate(bct_messages[:5])], sep='\n')
